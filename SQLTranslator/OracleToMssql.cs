@@ -5,9 +5,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SQLTranslator
 {
@@ -27,27 +27,41 @@ namespace SQLTranslator
         }
         public void Run()
         {
-            _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|Début d'éxecution");
+            _logger.Log(LogLevel.Information, "Début d'éxecution");
 
             _fileServices.CheckWatchPath(_appSettings.Paths.Input, "*.sql");
             var filePathList = _fileServices.GetFilePathList();
 
-            foreach(var file in filePathList)
-            {
-                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|Lecture du fichier {file}");
-                var fileLines = _fileServices.ReadFile(file);
-                var sqlLines = Translate(fileLines);
-                _fileServices.WriteMSSqlFile(sqlLines, _appSettings.Paths.Output, Path.GetFileName(file));
-            }
+            Parallel.ForEach(filePathList, (file) => ReadFile(file));
+
+            _logger.Log(LogLevel.Information, "Fin d'éxecution");
         }
 
-        public IEnumerable<string> Translate(IEnumerable<string> fileLines)
+        private void ReadFile(string file)
         {
-            var exportedTable = new Dictionary<string, IEnumerable<IDictionary<string, string>>>();
+            _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Lecture du fichier");
+            var fileLines = _fileServices.ReadFile(file);
+            _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction des lignes");
+            var sqlLines = TranslateFileLines(fileLines);
+            _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Écriture de nouveau script");
+            _fileServices.WriteMSSqlFile(sqlLines, _appSettings.Paths.Output, Path.GetFileName(file));
+        }
+
+        private IEnumerable<string> TranslateFileLines(IEnumerable<string> fileLines)
+        {
+            var fileLinesToWrite = new List<string>();
             var exportedRows = new List<string>();
             var fieldsArray = new List<string>();
             var valuesArray = new List<string>();
             string tableName = string.Empty;
+
+            if (!fileLines.Any())
+            {
+                return null;
+            }
+
+            fileLinesToWrite.Add(GetScriptHeader());
+            fileLinesToWrite.Add(GetBeginTransactionStatement());
 
             try
             {
@@ -63,7 +77,7 @@ namespace SQLTranslator
                     if (lineType == "insert")
                     {
                         fieldsArray = line.Split(',').ToList();
-                        tableName = fieldsArray[0].Split(' ')[2];
+                        tableName = fieldsArray[0].Split(' ')[2].Split('.')[1];
                     }
                     else if (lineType == "values")
                     {
@@ -79,13 +93,19 @@ namespace SQLTranslator
                             }
                         }
 
-                        valuesArray = matches.Any() ? replacedLine.Split(',').ToList() : line.Split(',').ToList();
+                        valuesArray = string.IsNullOrWhiteSpace(replacedLine) ? line.Split(',').ToList() : replacedLine.Split(',').ToList();
 
                         var lineData = GetRowData(fieldsArray, valuesArray);
                         if (lineData != null)
                         {
-                            exportedRows.Add(RowToString(tableName, lineData));
-                            //exportedRows.Add(lineData);
+                            var stringRow = RowToString(tableName, lineData);
+                            exportedRows.Add(stringRow);
+                            fileLinesToWrite.Add(stringRow);
+
+                            if (exportedRows.Count % 100000 == 0)
+                            {
+                                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|Ligne {exportedRows.Count} exporté");
+                            }
                         }
                     }
                 }
@@ -97,7 +117,9 @@ namespace SQLTranslator
                 //IsAnyLineParseError = true;
             }
 
-            return exportedRows;
+            fileLinesToWrite.Add(GetEndTransactionStatement(exportedRows.Count, tableName));
+
+            return fileLinesToWrite;
         }
 
         private IDictionary<string, string> GetRowData(IList<string> fieldsArray, IList<string> valuesArray)
@@ -143,7 +165,7 @@ namespace SQLTranslator
 
                     date = DateTime.ParseExact(date, format, CultureInfo.InvariantCulture).ToString();
 
-                    trimmedValue = $"CONVERT(DATETIME, '{date}', 5)";
+                    trimmedValue = $"CONVERT(DATETIME, '{date}')";
 
                     valueIndex++;
                 }
@@ -153,6 +175,41 @@ namespace SQLTranslator
             }
 
             return exportedRow;
+        }
+
+        private string GetScriptHeader()
+        {
+            return $"-- Script importation des lignes\n" +
+                   "-- Cet script template est protecté avec transactions: il peut être exécuté plousiers fois sans erreurs ou inconsistence des données\n" +
+                   "\n" +
+                   "SET XACT_ABORT ON\n" +
+                   "SET NOCOUNT ON\n" +
+                   "\n";
+        }
+
+        private string GetBeginTransactionStatement()
+        {
+            return "BEGIN TRANSACTION\n\n" +
+                   "DECLARE @ExpectedRowCount INT\n" +
+                   "DECLARE @ActualRowCount INT\n";
+        }
+
+        private string GetEndTransactionStatement(int rowsCount, string tableName)
+        {
+            return $"\nSET @ExpectedRowCount = {rowsCount}\n" +
+                   $"SET @ActualRowCount = (SELECT COUNT(*) FROM {tableName})\n\n" +
+                   "RAISERROR('Expected row count: %d', 0, 1, @ExpectedRowCount) WITH NOWAIT\n" +
+                   "RAISERROR('Current row count: %d', 0, 1, @ActualRowCount) WITH NOWAIT\n" +
+                   "IF @ExpectedRowCount <> @ActualRowCount\n" +
+                   "BEGIN\n" +
+                   "    RAISERROR('Row count doesn''t match. Rolling back transaction.', 0, 1) WITH NOWAIT\n" +
+                   "    ROLLBACK TRANSACTION\n" +
+                   "END\n" +
+                   "ELSE\n" +
+                   "BEGIN\n" +
+                   "    RAISERROR('Row count match. Committing transaction.', 0, 1) WITH NOWAIT\n" +
+                   "    COMMIT TRANSACTION\n" +
+                   "END";
         }
 
         private string RowToString(string tableName, IDictionary<string, string> row)
