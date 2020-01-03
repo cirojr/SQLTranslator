@@ -81,47 +81,78 @@ namespace SQLTranslator
                     }
                     else if (lineType == "values")
                     {
-                        var replacedLine = string.Empty;
+                        var replacedLine = line;
 
-                        replacedLine = line.Replace("||", string.Empty, StringComparison.InvariantCulture).Replace("chr(13)", string.Empty, StringComparison.InvariantCulture);
+                        var apostropheBetweenBarresRegex = new Regex(@"[|] '[^|()]*' [|]");
+                        var apostropheBetweenBarresMatches = apostropheBetweenBarresRegex.Matches(replacedLine);
+                        foreach (Match text in apostropheBetweenBarresMatches)
+                        {
+                            replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                        }
 
-                        var singleApostropheRegex = new Regex(@"([^,][\s]|[(][']|[\w]|[^',][^',(])'([^',)]|[\w]|['][,)]|[^,][\s])");
+                        var multipleApostrophesTogetherRegex = new Regex(@".[']{3,}.");
+                        var multipleApostrophesTogetherMatches = multipleApostrophesTogetherRegex.Matches(replacedLine);
+                        foreach (Match text in multipleApostrophesTogetherMatches)
+                        {
+                            if (text.Value.EndsWith("',", StringComparison.InvariantCulture)){
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture)
+                                    .Replace(",", "',", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                            }
+                            if (text.Value.StartsWith(",'", StringComparison.InvariantCulture)){
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture)
+                                    .Replace(",", ",'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                            }
+                            replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                        }
+
+                        var singleApostropheRegex = new Regex(@"([\w][,][\s]|[,]|[,][\s]['][\s]{0,1}|[^,][\s]|[(][']|[\w]|[^',][^',(])'([\s]['][,]|[\s][']|[^',)]|[\w]|['][,)]|[^,][\s])");
                         var singleApostropheMatches = singleApostropheRegex.Matches(replacedLine);
 
                         foreach(Match text in singleApostropheMatches)
                         {
                             if (text.Value.Contains("' '", StringComparison.InvariantCulture))
                             {
-                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("' '", "'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("' ',", "',", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace(", ' '", ", '", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("' '", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                                 continue;
                             }
                             if (text.Value.Contains("''", StringComparison.InvariantCulture))
                             {
-                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("''", "'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace(" '',", " ',", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace(", ''", ", '", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace(" '' ", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                                 continue;
                             }
 
                             replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                         }
 
+                        //checking if strings after nulls had lost their apostrophe
+                        var nullRegex = new Regex(@"null[,][\s][\D][\w]*");
+                        var nullMatches = nullRegex.Matches(replacedLine);
+
+                        foreach (Match text in nullMatches)
+                        {
+                            if (!text.Value.Contains("to_date", StringComparison.InvariantCulture))
+                            {
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("null, ", "null, '", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                            }
+                        }
+
+                        replacedLine = replacedLine.Replace("||", string.Empty, StringComparison.InvariantCulture)
+                            .Replace("chr(13)", string.Empty, StringComparison.InvariantCulture)
+                            .Replace("chr(9)", string.Empty, StringComparison.InvariantCulture);
+
                         var textsBetweenApostrophesRegex = new Regex(@"'([^']+)'");
                         var textsMatches = textsBetweenApostrophesRegex.Matches(replacedLine);
 
                         foreach (Match text in textsMatches)
                         {
-                            //if (text.Value.Contains(',', StringComparison.InvariantCulture))
-                            //{
-                                replacedLine = string.IsNullOrWhiteSpace(replacedLine) ?
-                                               line.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '), StringComparison.InvariantCulture) :
-                                               replacedLine.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '), StringComparison.InvariantCulture);
-                            //}
-
-                            replacedLine = string.IsNullOrWhiteSpace(replacedLine) ?
-                                           line.Replace("'T'", "1", StringComparison.InvariantCulture) :
-                                           replacedLine.Replace("'T'", "1", StringComparison.InvariantCulture);
-                            replacedLine = string.IsNullOrWhiteSpace(replacedLine) ?
-                                           line.Replace("'F'", "0", StringComparison.InvariantCulture) :
-                                           replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
+                            replacedLine = replacedLine.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '), StringComparison.InvariantCulture);
+                            replacedLine = replacedLine.Replace("'T'", "1", StringComparison.InvariantCulture);
+                            replacedLine = replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
+                            replacedLine = replacedLine.Replace("\"", string.Empty, StringComparison.InvariantCulture);
                         }
 
                         valuesArray = string.IsNullOrWhiteSpace(replacedLine) ? line.Split(',').ToList() : replacedLine.Split(',').ToList();
@@ -133,7 +164,7 @@ namespace SQLTranslator
                             exportedRows.Add(stringRow);
                             fileLinesToWrite.Add(stringRow);
 
-                            if (exportedRows.Count % 100000 == 0)
+                            if (exportedRows.Count % 10000 == 0)
                             {
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|Ligne {exportedRows.Count} exporté");
                             }
