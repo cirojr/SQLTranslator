@@ -22,7 +22,7 @@ namespace SQLTranslator
                              IFileServices fileServices)
         {
             _logger = logger;
-            _appSettings = appSettings.CurrentValue;
+            _appSettings = appSettings?.CurrentValue;
             _fileServices = fileServices;
         }
         public void Run()
@@ -81,16 +81,47 @@ namespace SQLTranslator
                     }
                     else if (lineType == "values")
                     {
-                        var regex = new Regex(@"'([^']+)'");
-                        var matches = regex.Matches(line);
                         var replacedLine = string.Empty;
 
-                        foreach (Match text in matches)
+                        replacedLine = line.Replace("||", string.Empty, StringComparison.InvariantCulture).Replace("chr(13)", string.Empty, StringComparison.InvariantCulture);
+
+                        var singleApostropheRegex = new Regex(@"([^,][\s]|[(][']|[\w]|[^',][^',(])'([^',)]|[\w]|['][,)]|[^,][\s])");
+                        var singleApostropheMatches = singleApostropheRegex.Matches(replacedLine);
+
+                        foreach(Match text in singleApostropheMatches)
                         {
-                            if (text.Value.Contains(','))
+                            if (text.Value.Contains("' '", StringComparison.InvariantCulture))
                             {
-                                replacedLine = line.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '));
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("' '", "'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                continue;
                             }
+                            if (text.Value.Contains("''", StringComparison.InvariantCulture))
+                            {
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("''", "'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                                continue;
+                            }
+
+                            replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                        }
+
+                        var textsBetweenApostrophesRegex = new Regex(@"'([^']+)'");
+                        var textsMatches = textsBetweenApostrophesRegex.Matches(replacedLine);
+
+                        foreach (Match text in textsMatches)
+                        {
+                            //if (text.Value.Contains(',', StringComparison.InvariantCulture))
+                            //{
+                                replacedLine = string.IsNullOrWhiteSpace(replacedLine) ?
+                                               line.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '), StringComparison.InvariantCulture) :
+                                               replacedLine.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '), StringComparison.InvariantCulture);
+                            //}
+
+                            replacedLine = string.IsNullOrWhiteSpace(replacedLine) ?
+                                           line.Replace("'T'", "1", StringComparison.InvariantCulture) :
+                                           replacedLine.Replace("'T'", "1", StringComparison.InvariantCulture);
+                            replacedLine = string.IsNullOrWhiteSpace(replacedLine) ?
+                                           line.Replace("'F'", "0", StringComparison.InvariantCulture) :
+                                           replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
                         }
 
                         valuesArray = string.IsNullOrWhiteSpace(replacedLine) ? line.Split(',').ToList() : replacedLine.Split(',').ToList();
@@ -158,12 +189,17 @@ namespace SQLTranslator
 
                 // to_date function is divided in two arrays positions, so we need to jump one more index
                 // for the same field position
-                if (trimmedValue.Contains("to_date"))
+                if (trimmedValue.Contains("to_date", StringComparison.InvariantCulture))
                 {
                     var date = trimmedValue.Split('(')[1].Trim('\'');
-                    var format = valuesArray[valueIndex + 1].Trim().Trim(new char[] { '\'', ')', ';' }).Replace('m', 'M');
+                    var format = valuesArray[valueIndex + 1].Trim().Trim(new char[] { '\'', ')', ';' }).Replace('m', 'M').Split(' ')[0];
 
-                    date = DateTime.ParseExact(date, format, CultureInfo.InvariantCulture).ToString();
+                    if (date.Split(' ').Length == 2)
+                    {
+                        format += " HH:mm:ss";
+                    }
+
+                    date = DateTime.ParseExact(date, format, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
 
                     trimmedValue = $"CONVERT(DATETIME, '{date}')";
 
