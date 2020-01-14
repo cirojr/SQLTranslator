@@ -41,27 +41,24 @@ namespace SQLTranslator
         {
             _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Lecture du fichier");
             var fileLines = _fileServices.ReadFile(file);
-            _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction des lignes");
-            var sqlLines = TranslateFileLines(fileLines);
-            _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Écriture de nouveau script");
-            _fileServices.WriteMSSqlFile(sqlLines, _appSettings.Paths.Output, Path.GetFileName(file));
+            TranslateFileLines(file, fileLines);
         }
 
-        private IEnumerable<string> TranslateFileLines(IEnumerable<string> fileLines)
+        private void TranslateFileLines(string file, IEnumerable<string> fileLines)
         {
             var fileLinesToWrite = new List<string>();
             var exportedRows = new List<string>();
             var fieldsArray = new List<string>();
             var valuesArray = new List<string>();
             string tableName = string.Empty;
+            var rowsToExportNumber = 20000;
+            var fileIndex = 0;
+            var fileName = string.Empty;
 
             if (!fileLines.Any())
             {
-                return null;
+                return;
             }
-
-            fileLinesToWrite.Add(GetScriptHeader());
-            fileLinesToWrite.Add(GetBeginTransactionStatement());
 
             try
             {
@@ -82,6 +79,15 @@ namespace SQLTranslator
                     else if (lineType == "values")
                     {
                         var replacedLine = line;
+
+                        var textsBetweenBarresRegex = new Regex(@"' [|][|] .* [|][|] '");
+                        var textsBetweenBarresMatches = textsBetweenBarresRegex.Matches(replacedLine);
+                        foreach (Match text in textsBetweenBarresMatches)
+                        {
+                            replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("' || chr(13) || '", " ", StringComparison.InvariantCulture)
+                                                                                      .Replace("' || chr(9) || '", " ", StringComparison.InvariantCulture),
+                                                                            StringComparison.InvariantCulture);
+                        }
 
                         var apostropheBetweenBarresRegex = new Regex(@"[|] '[^|()]*' [|]");
                         var apostropheBetweenBarresMatches = apostropheBetweenBarresRegex.Matches(replacedLine);
@@ -105,7 +111,7 @@ namespace SQLTranslator
                             replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                         }
 
-                        var singleApostropheRegex = new Regex(@"([\w][,][\s]|[,]|[,][\s]['][\s]{0,1}|[^,][\s]|[(][']|[\w]|[^',][^',(])'([\s]['][,]|[\s][']|[^',)]|[\w]|['][,)]|[^,][\s])");
+                        var singleApostropheRegex = new Regex(@"([,]|[,][\s]['][\s]{0,1}|[^,][\s]|[(][']|[\w]|[^',][^',(])'([\s]['][,]|[\s][']|[^',)]|[\w]|['][,)]|[^,][\s])");
                         var singleApostropheMatches = singleApostropheRegex.Matches(replacedLine);
 
                         foreach(Match text in singleApostropheMatches)
@@ -129,30 +135,34 @@ namespace SQLTranslator
                         }
 
                         //checking if strings after nulls had lost their apostrophe
-                        var nullRegex = new Regex(@"null[,][\s][\D][\w]*");
-                        var nullMatches = nullRegex.Matches(replacedLine);
+                        //var nullRegex = new Regex(@"null[,][\s][\D][\w]*");
+                        //var nullMatches = nullRegex.Matches(replacedLine);
 
-                        foreach (Match text in nullMatches)
-                        {
-                            if (!text.Value.Contains("to_date", StringComparison.InvariantCulture))
-                            {
-                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("null, ", "null, '", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
-                            }
-                        }
+                        //foreach (Match text in nullMatches)
+                        //{
+                        //    if (!text.Value.Contains("to_date", StringComparison.InvariantCulture))
+                        //    {
+                        //        replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("null, ", "null, '", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                        //    }
+                        //}
 
-                        replacedLine = replacedLine.Replace("||", string.Empty, StringComparison.InvariantCulture)
-                            .Replace("chr(13)", string.Empty, StringComparison.InvariantCulture)
-                            .Replace("chr(9)", string.Empty, StringComparison.InvariantCulture);
+                        replacedLine = replacedLine.Replace("'T'", "1", StringComparison.InvariantCulture);
+                        replacedLine = replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
+                        replacedLine = replacedLine.Replace("\"", string.Empty, StringComparison.InvariantCulture);
 
-                        var textsBetweenApostrophesRegex = new Regex(@"'([^']+)'");
+                        var textsBetweenApostrophesRegex = new Regex(@"[(]'[^\s]([^']+?)'[,]|\s'[^\s]([^']+?)'[)]|\s'[^\s](.+?)',|\s'([\s\S])+?'[,]");
                         var textsMatches = textsBetweenApostrophesRegex.Matches(replacedLine);
-
                         foreach (Match text in textsMatches)
                         {
-                            replacedLine = replacedLine.Replace(text.Value.Trim('"'), text.Value.Trim('"').Replace(',', ' '), StringComparison.InvariantCulture);
-                            replacedLine = replacedLine.Replace("'T'", "1", StringComparison.InvariantCulture);
-                            replacedLine = replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
-                            replacedLine = replacedLine.Replace("\"", string.Empty, StringComparison.InvariantCulture);
+
+                            if (text.Value.StartsWith(','))
+                            {
+                                replacedLine = replacedLine.Replace(text.Value.Trim('"').Trim().Trim(','), $",{text.Value.Trim('"').Trim().Trim(',').Replace(',', ' ')}", StringComparison.InvariantCulture);
+                            }
+                            else if (text.Value.EndsWith(','))
+                            {
+                                replacedLine = replacedLine.Replace(text.Value.Trim('"').Trim().Trim(','), $"{text.Value.Trim('"').Trim().Trim(',').Replace(',', ' ')},", StringComparison.InvariantCulture);
+                            }
                         }
 
                         valuesArray = string.IsNullOrWhiteSpace(replacedLine) ? line.Split(',').ToList() : replacedLine.Split(',').ToList();
@@ -162,15 +172,45 @@ namespace SQLTranslator
                         {
                             var stringRow = RowToString(tableName, lineData);
                             exportedRows.Add(stringRow);
-                            fileLinesToWrite.Add(stringRow);
-
-                            if (exportedRows.Count % 10000 == 0)
+                            //fileLinesToWrite.Add(stringRow);
+                            
+                            if (exportedRows.Count % rowsToExportNumber == 0)
                             {
-                                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|Ligne {exportedRows.Count} exporté");
+                                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {exportedRows.Count - rowsToExportNumber} à {exportedRows.Count}");
+                                fileIndex = exportedRows.Count / rowsToExportNumber;
+                                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex}{Path.GetExtension(file)}";
+                                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de nouveau script");
+
+                                fileLinesToWrite.Clear();
+                                fileLinesToWrite.Add(GetScriptHeader());
+                                fileLinesToWrite.Add(GetBeginTransactionStatement());
+
+                                fileLinesToWrite.AddRange(exportedRows.Skip(exportedRows.Count - rowsToExportNumber).Take(rowsToExportNumber));
+
+                                fileLinesToWrite.Add(GetEndTransactionStatement(exportedRows.Count - rowsToExportNumber, rowsToExportNumber, tableName));
+
+                                _fileServices.WriteMSSqlFile(fileLinesToWrite, _appSettings.Paths.Output, fileName);
                             }
                         }
                     }
                 }
+
+                var previousExportedRowsCount = fileIndex * rowsToExportNumber;
+                var lastTreateddRowsCount = exportedRows.Count - previousExportedRowsCount;
+                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {previousExportedRowsCount} à {lastTreateddRowsCount}");
+                fileIndex++;
+                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex}{Path.GetExtension(file)}";
+                _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de dernier script");
+
+                fileLinesToWrite.Clear();
+                fileLinesToWrite.Add(GetScriptHeader());
+                fileLinesToWrite.Add(GetBeginTransactionStatement());
+
+                fileLinesToWrite.AddRange(exportedRows.Skip(previousExportedRowsCount).Take(lastTreateddRowsCount));
+
+                fileLinesToWrite.Add(GetEndTransactionStatement(previousExportedRowsCount, lastTreateddRowsCount, tableName));
+
+                _fileServices.WriteMSSqlFile(fileLinesToWrite, _appSettings.Paths.Output, fileName);
             }
             catch (Exception e)
             {
@@ -178,10 +218,6 @@ namespace SQLTranslator
                 Environment.ExitCode = 1;
                 //IsAnyLineParseError = true;
             }
-
-            fileLinesToWrite.Add(GetEndTransactionStatement(exportedRows.Count, tableName));
-
-            return fileLinesToWrite;
         }
 
         private IDictionary<string, string> GetRowData(IList<string> fieldsArray, IList<string> valuesArray)
@@ -192,7 +228,7 @@ namespace SQLTranslator
             for (var fieldIndex = 0; fieldIndex < fieldsArray.Count; fieldIndex++)
             {
                 string trimmedFieldName;
-                string trimmedValue;
+                string trimmedValue = string.Empty;
                 
 
                 if (fieldIndex == 0)
@@ -211,7 +247,20 @@ namespace SQLTranslator
                 }
 
                 trimmedFieldName = fieldsArray[fieldIndex].Trim().Trim(new char[]{'\'', ')', ';'}).Trim();
-                trimmedValue = valuesArray[valueIndex].Trim().Trim(new char[] {')', ';'});
+
+                try
+                {
+                    trimmedValue = valuesArray[valueIndex].Trim().Trim(new char[] { ')', ';' });
+                }                
+                catch(ArgumentOutOfRangeException ex)
+                {
+                    _logger.Log(LogLevel.Error, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{ex}");
+                }
+
+                if (string.IsNullOrWhiteSpace(trimmedValue))
+                {
+                    trimmedValue = "null";
+                }
 
                 if (trimmedValue.Substring(0, 1) == "\'")
                 {
@@ -247,26 +296,28 @@ namespace SQLTranslator
         private string GetScriptHeader()
         {
             return $"-- Script importation des lignes\n" +
-                   "-- Cet script template est protecté avec transactions: il peut être exécuté plousiers fois sans erreurs ou inconsistence des données\n" +
+                   "-- Cet script template est protecté avec transactions: il peut être exécuté plusieurs fois sans erreurs ou inconsistence des données\n" +
                    "\n" +
                    "SET XACT_ABORT ON\n" +
-                   "SET NOCOUNT ON\n" +
-                   "\n";
+                   "SET NOCOUNT ON\n";
         }
 
         private string GetBeginTransactionStatement()
         {
             return "BEGIN TRANSACTION\n\n" +
+                   "DECLARE @RowsToBeImported INT\n" +
                    "DECLARE @ExpectedRowCount INT\n" +
                    "DECLARE @ActualRowCount INT\n";
         }
 
-        private string GetEndTransactionStatement(int rowsCount, string tableName)
+        private string GetEndTransactionStatement(int rowsInTable, int rowsCount, string tableName)
         {
-            return $"\nSET @ExpectedRowCount = {rowsCount}\n" +
+            return $"\nSET @RowsToBeImported = {rowsCount}\n" +
+                   $"SET @ExpectedRowCount = {rowsInTable + rowsCount}\n" +
                    $"SET @ActualRowCount = (SELECT COUNT(*) FROM {tableName})\n\n" +
-                   "RAISERROR('Expected row count: %d', 0, 1, @ExpectedRowCount) WITH NOWAIT\n" +
-                   "RAISERROR('Current row count: %d', 0, 1, @ActualRowCount) WITH NOWAIT\n" +
+                   "RAISERROR('Rows expected to be imported: %d', 0, 1, @RowsToBeImported) WITH NOWAIT\n" +
+                   "RAISERROR('Expected new row count: %d', 0, 1, @ExpectedRowCount) WITH NOWAIT\n" +
+                   "RAISERROR('Current new row count: %d', 0, 1, @ActualRowCount) WITH NOWAIT\n" +
                    "IF @ExpectedRowCount <> @ActualRowCount\n" +
                    "BEGIN\n" +
                    "    RAISERROR('Row count doesn''t match. Rolling back transaction.', 0, 1) WITH NOWAIT\n" +
