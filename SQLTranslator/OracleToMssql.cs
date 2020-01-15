@@ -108,12 +108,11 @@ namespace SQLTranslator
                                 replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture)
                                     .Replace(",", ",'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                             }
-                            replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                            replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'''", "'", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                         }
 
                         var singleApostropheRegex = new Regex(@"([,]|[,][\s]['][\s]{0,1}|[^,][\s]|[(][']|[\w]|[^',][^',(])'([\s]['][,]|[\s][']|[^',)]|[\w]|['][,)]|[^,][\s])");
                         var singleApostropheMatches = singleApostropheRegex.Matches(replacedLine);
-
                         foreach(Match text in singleApostropheMatches)
                         {
                             if (text.Value.Contains("' '", StringComparison.InvariantCulture))
@@ -134,6 +133,16 @@ namespace SQLTranslator
                             replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("'", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
                         }
 
+                        var doubleApostrophesAfterNumberRegex = new Regex(@"\d''");
+                        var doubleApostrophesAfterNumberMatches = doubleApostrophesAfterNumberRegex.Matches(replacedLine);
+                        foreach (Match text in doubleApostrophesAfterNumberMatches)
+                        {
+                            if (text.Value.Contains("''", StringComparison.InvariantCulture))
+                            {
+                                replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("''", string.Empty, StringComparison.InvariantCulture), StringComparison.InvariantCulture);
+                            }
+                        }
+
                         //checking if strings after nulls had lost their apostrophe
                         //var nullRegex = new Regex(@"null[,][\s][\D][\w]*");
                         //var nullMatches = nullRegex.Matches(replacedLine);
@@ -150,18 +159,18 @@ namespace SQLTranslator
                         replacedLine = replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
                         replacedLine = replacedLine.Replace("\"", string.Empty, StringComparison.InvariantCulture);
 
-                        var textsBetweenApostrophesRegex = new Regex(@"[(]'[^\s]([^']+?)'[,]|\s'[^\s]([^']+?)'[)]|\s'[^\s](.+?)',|\s'([\s\S])+?'[,]");
+                        //var textsBetweenApostrophesRegex = new Regex(@"[(]'[^\s]([^']+?)'[,]|\s'[^\s]([^']+?)'[)]|\s'[^\s](.+?)',|\s'([\s\S])+?'[,]");
+                        var textsBetweenApostrophesRegex = new Regex(@"[(]'([^']+?)'[,]|\s'[^\s]([^']+?)'[)]|\s'[^\s](.+?)',|\s'([\s\S])+?'[,]");
                         var textsMatches = textsBetweenApostrophesRegex.Matches(replacedLine);
                         foreach (Match text in textsMatches)
                         {
-
                             if (text.Value.StartsWith(','))
                             {
-                                replacedLine = replacedLine.Replace(text.Value.Trim('"').Trim().Trim(','), $",{text.Value.Trim('"').Trim().Trim(',').Replace(',', ' ')}", StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value.Trim('"').Trim(), $",{text.Value.Trim('"').Trim().Trim(',').Replace(',', ' ')}", StringComparison.InvariantCulture);
                             }
                             else if (text.Value.EndsWith(','))
                             {
-                                replacedLine = replacedLine.Replace(text.Value.Trim('"').Trim().Trim(','), $"{text.Value.Trim('"').Trim().Trim(',').Replace(',', ' ')},", StringComparison.InvariantCulture);
+                                replacedLine = replacedLine.Replace(text.Value.Trim('"').Trim(), $"{text.Value.Trim('"').Trim().Trim(',').Replace(',', ' ')},", StringComparison.InvariantCulture);
                             }
                         }
 
@@ -178,7 +187,7 @@ namespace SQLTranslator
                             {
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {exportedRows.Count - rowsToExportNumber} à {exportedRows.Count}");
                                 fileIndex = exportedRows.Count / rowsToExportNumber;
-                                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex}{Path.GetExtension(file)}";
+                                fileName = $"{fileIndex}.{Path.GetFileNameWithoutExtension(file)}{Path.GetExtension(file)}";
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de nouveau script");
 
                                 fileLinesToWrite.Clear();
@@ -199,7 +208,7 @@ namespace SQLTranslator
                 var lastTreateddRowsCount = exportedRows.Count - previousExportedRowsCount;
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {previousExportedRowsCount} à {lastTreateddRowsCount}");
                 fileIndex++;
-                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex}{Path.GetExtension(file)}";
+                fileName = $"{fileIndex}.{Path.GetFileNameWithoutExtension(file)}{Path.GetExtension(file)}";
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de dernier script");
 
                 fileLinesToWrite.Clear();
@@ -216,7 +225,6 @@ namespace SQLTranslator
             {
                 _logger.Log(LogLevel.Error, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{e}");
                 Environment.ExitCode = 1;
-                //IsAnyLineParseError = true;
             }
         }
 

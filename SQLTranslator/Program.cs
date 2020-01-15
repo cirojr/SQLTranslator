@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,8 +23,6 @@ namespace SQLTranslator
             ConfigureServices(services);
 
             var serviceProvider = services.BuildServiceProvider();
-
-            //ValidateSettingsModel(serviceProvider.GetService<IOptionsMonitor<AppSettingsModel>>());
 
             serviceProvider.GetService<OracleToMssql>().Run();
         }
