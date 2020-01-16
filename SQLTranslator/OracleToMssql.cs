@@ -54,7 +54,6 @@ namespace SQLTranslator
             var rowsToExportNumber = 20000;
             var fileIndex = 0;
             string fileName;
-            var fileNumber = Path.GetFileName(file).Substring(0, 3);
             var fileExtension = Path.GetExtension(file);
 
             if (!fileLines.Any())
@@ -175,7 +174,7 @@ namespace SQLTranslator
                             {
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {exportedRows.Count - rowsToExportNumber} à {exportedRows.Count}");
                                 fileIndex = exportedRows.Count / rowsToExportNumber;
-                                fileName = $"{fileNumber}{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
+                                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de nouveau script");
 
                                 fileLinesToWrite.Clear();
@@ -197,7 +196,7 @@ namespace SQLTranslator
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {previousExportedRowsCount} à {lastTreateddRowsCount}");
 
                 fileIndex++;
-                fileName = $"{fileNumber}{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
+                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de dernier script");
 
                 fileLinesToWrite.Clear();
