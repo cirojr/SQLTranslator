@@ -53,7 +53,9 @@ namespace SQLTranslator
             string tableName = string.Empty;
             var rowsToExportNumber = 20000;
             var fileIndex = 0;
-            var fileName = string.Empty;
+            var fileName = Path.GetFileNameWithoutExtension(file).Remove(0, 4);
+            var fileNumber = Path.GetFileName(file).Substring(0, 3);
+            var fileExtension = Path.GetExtension(file);
 
             if (!fileLines.Any())
             {
@@ -187,7 +189,7 @@ namespace SQLTranslator
                             {
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {exportedRows.Count - rowsToExportNumber} à {exportedRows.Count}");
                                 fileIndex = exportedRows.Count / rowsToExportNumber;
-                                fileName = $"{fileIndex}.{Path.GetFileNameWithoutExtension(file)}{Path.GetExtension(file)}";
+                                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de nouveau script");
 
                                 fileLinesToWrite.Clear();
@@ -208,7 +210,7 @@ namespace SQLTranslator
                 var lastTreateddRowsCount = exportedRows.Count - previousExportedRowsCount;
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {previousExportedRowsCount} à {lastTreateddRowsCount}");
                 fileIndex++;
-                fileName = $"{fileIndex}.{Path.GetFileNameWithoutExtension(file)}{Path.GetExtension(file)}";
+                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de dernier script");
 
                 fileLinesToWrite.Clear();
@@ -303,38 +305,38 @@ namespace SQLTranslator
 
         private string GetScriptHeader()
         {
-            return $"-- Script importation des lignes\n" +
-                   "-- Cet script template est protecté avec transactions: il peut être exécuté plusieurs fois sans erreurs ou inconsistence des données\n" +
-                   "\n" +
-                   "SET XACT_ABORT ON\n" +
-                   "SET NOCOUNT ON\n";
+            return $"-- Script importation des lignes\r\n" +
+                   "-- Cet script template est protecté avec transactions: il peut être exécuté plusieurs fois sans erreurs ou inconsistence des données\r\n" +
+                   "\r\n" +
+                   "SET XACT_ABORT ON\r\n" +
+                   "SET NOCOUNT ON\r\n";
         }
 
         private string GetBeginTransactionStatement()
         {
-            return "BEGIN TRANSACTION\n\n" +
-                   "DECLARE @RowsToBeImported INT\n" +
-                   "DECLARE @ExpectedRowCount INT\n" +
-                   "DECLARE @ActualRowCount INT\n";
+            return "BEGIN TRANSACTION\r\n\r\n" +
+                   "DECLARE @RowsToBeImported INT\r\n" +
+                   "DECLARE @ExpectedRowCount INT\r\n" +
+                   "DECLARE @ActualRowCount INT\r\n";
         }
 
         private string GetEndTransactionStatement(int rowsInTable, int rowsCount, string tableName)
         {
-            return $"\nSET @RowsToBeImported = {rowsCount}\n" +
-                   $"SET @ExpectedRowCount = {rowsInTable + rowsCount}\n" +
-                   $"SET @ActualRowCount = (SELECT COUNT(*) FROM {tableName})\n\n" +
-                   "RAISERROR('Rows expected to be imported: %d', 0, 1, @RowsToBeImported) WITH NOWAIT\n" +
-                   "RAISERROR('Expected new row count: %d', 0, 1, @ExpectedRowCount) WITH NOWAIT\n" +
-                   "RAISERROR('Current new row count: %d', 0, 1, @ActualRowCount) WITH NOWAIT\n" +
-                   "IF @ExpectedRowCount <> @ActualRowCount\n" +
-                   "BEGIN\n" +
-                   "    RAISERROR('Row count doesn''t match. Rolling back transaction.', 0, 1) WITH NOWAIT\n" +
-                   "    ROLLBACK TRANSACTION\n" +
-                   "END\n" +
-                   "ELSE\n" +
-                   "BEGIN\n" +
-                   "    RAISERROR('Row count match. Committing transaction.', 0, 1) WITH NOWAIT\n" +
-                   "    COMMIT TRANSACTION\n" +
+            return $"\r\nSET @RowsToBeImported = {rowsCount}\r\n" +
+                   $"SET @ExpectedRowCount = {rowsInTable + rowsCount}\r\n" +
+                   $"SET @ActualRowCount = (SELECT COUNT(*) FROM {tableName})\r\n\r\n" +
+                   "RAISERROR('Rows expected to be imported: %d', 0, 1, @RowsToBeImported) WITH NOWAIT\r\n" +
+                   "RAISERROR('Expected new row count: %d', 0, 1, @ExpectedRowCount) WITH NOWAIT\r\n" +
+                   "RAISERROR('Current new row count: %d', 0, 1, @ActualRowCount) WITH NOWAIT\r\n" +
+                   "IF @ExpectedRowCount <> @ActualRowCount\r\n" +
+                   "BEGIN\r\n" +
+                   "    RAISERROR('Row count doesn''t match. Rolling back transaction.', 0, 1) WITH NOWAIT\r\n" +
+                   "    ROLLBACK TRANSACTION\r\n" +
+                   "END\r\n" +
+                   "ELSE\r\n" +
+                   "BEGIN\r\n" +
+                   "    RAISERROR('Row count match. Committing transaction.', 0, 1) WITH NOWAIT\r\n" +
+                   "    COMMIT TRANSACTION\r\n" +
                    "END";
         }
 
