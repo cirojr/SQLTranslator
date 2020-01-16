@@ -49,11 +49,11 @@ namespace SQLTranslator
             var fileLinesToWrite = new List<string>();
             var exportedRows = new List<string>();
             var fieldsArray = new List<string>();
-            var valuesArray = new List<string>();
-            string tableName = string.Empty;
+            IList<string> valuesArray;
+            var tableName = string.Empty;
             var rowsToExportNumber = 20000;
             var fileIndex = 0;
-            var fileName = Path.GetFileNameWithoutExtension(file).Remove(0, 4);
+            string fileName;
             var fileNumber = Path.GetFileName(file).Substring(0, 3);
             var fileExtension = Path.GetExtension(file);
 
@@ -145,23 +145,10 @@ namespace SQLTranslator
                             }
                         }
 
-                        //checking if strings after nulls had lost their apostrophe
-                        //var nullRegex = new Regex(@"null[,][\s][\D][\w]*");
-                        //var nullMatches = nullRegex.Matches(replacedLine);
-
-                        //foreach (Match text in nullMatches)
-                        //{
-                        //    if (!text.Value.Contains("to_date", StringComparison.InvariantCulture))
-                        //    {
-                        //        replacedLine = replacedLine.Replace(text.Value, text.Value.Replace("null, ", "null, '", StringComparison.InvariantCulture), StringComparison.InvariantCulture);
-                        //    }
-                        //}
-
                         replacedLine = replacedLine.Replace("'T'", "1", StringComparison.InvariantCulture);
                         replacedLine = replacedLine.Replace("'F'", "0", StringComparison.InvariantCulture);
                         replacedLine = replacedLine.Replace("\"", string.Empty, StringComparison.InvariantCulture);
 
-                        //var textsBetweenApostrophesRegex = new Regex(@"[(]'[^\s]([^']+?)'[,]|\s'[^\s]([^']+?)'[)]|\s'[^\s](.+?)',|\s'([\s\S])+?'[,]");
                         var textsBetweenApostrophesRegex = new Regex(@"[(]'([^']+?)'[,]|\s'[^\s]([^']+?)'[)]|\s'[^\s](.+?)',|\s'([\s\S])+?'[,]");
                         var textsMatches = textsBetweenApostrophesRegex.Matches(replacedLine);
                         foreach (Match text in textsMatches)
@@ -183,13 +170,12 @@ namespace SQLTranslator
                         {
                             var stringRow = RowToString(tableName, lineData);
                             exportedRows.Add(stringRow);
-                            //fileLinesToWrite.Add(stringRow);
                             
                             if (exportedRows.Count % rowsToExportNumber == 0)
                             {
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {exportedRows.Count - rowsToExportNumber} à {exportedRows.Count}");
                                 fileIndex = exportedRows.Count / rowsToExportNumber;
-                                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
+                                fileName = $"{fileNumber}{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
                                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de nouveau script");
 
                                 fileLinesToWrite.Clear();
@@ -209,8 +195,9 @@ namespace SQLTranslator
                 var previousExportedRowsCount = fileIndex * rowsToExportNumber;
                 var lastTreateddRowsCount = exportedRows.Count - previousExportedRowsCount;
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {previousExportedRowsCount} à {lastTreateddRowsCount}");
+
                 fileIndex++;
-                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
+                fileName = $"{fileNumber}{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de dernier script");
 
                 fileLinesToWrite.Clear();
@@ -239,7 +226,6 @@ namespace SQLTranslator
             {
                 string trimmedFieldName;
                 string trimmedValue = string.Empty;
-                
 
                 if (fieldIndex == 0)
                 {
@@ -261,7 +247,7 @@ namespace SQLTranslator
                 try
                 {
                     trimmedValue = valuesArray[valueIndex].Trim().Trim(new char[] { ')', ';' });
-                }                
+                }
                 catch(ArgumentOutOfRangeException ex)
                 {
                     _logger.Log(LogLevel.Error, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{ex}");

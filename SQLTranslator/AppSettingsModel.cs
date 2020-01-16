@@ -8,8 +8,6 @@
     {
         public string Input { get; set; }
 
-        public string InProgress { get; set; }
-
         public string Error { get; set; }
 
         public string Output { get; set; }

@@ -8,13 +8,13 @@ using NLog.Extensions.Logging;
 /*************************************************************************************************************************************************************
 * Date              Author                      Description
 * ============================================================================================================================================================
-* 2019-11-22        Ciro Antunes                Entry point for 'TraiterFichier' program. Checks and loads configuration files and service classes, then
-*                                               run 'TraiterFichier' main service
+* 2020-01-16        Ciro Antunes                Entry point for 'SQLTranslator' program. Checks and loads configuration files and service classes, then
+*                                               run 'SQLTranslator' main service
 /*************************************************************************************************************************************************************/
 
 namespace SQLTranslator
 {
-    public class Program
+    public static class Program
     {
         public static void Main()
         {
@@ -29,14 +29,7 @@ namespace SQLTranslator
 
         private static void ConfigureServices(IServiceCollection services)
         {
-            var environmentVariable = "ICoCEnvironment";
-
-            //Gets environment
-            var environmentName = Environment.GetEnvironmentVariable(environmentVariable, EnvironmentVariableTarget.Machine);
-
             var defaultJsonFile = "appsettings.json";
-
-            //ValidateSettingsExist(environmentName, defaultJsonFile);
 
             //Gets appsettings configurations
             var configurationBuilder = new ConfigurationBuilder()
@@ -105,4 +98,3 @@ namespace SQLTranslator
         }*/
     }
 }
-
