@@ -196,7 +196,7 @@ namespace SQLTranslator
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{file}|Traduction lignes {previousExportedRowsCount} à {lastTreateddRowsCount}");
 
                 fileIndex++;
-                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000")}{fileExtension}";
+                fileName = $"{Path.GetFileNameWithoutExtension(file)}{fileIndex.ToString("000", CultureInfo.InvariantCulture)}{fileExtension}";
                 _logger.Log(LogLevel.Information, $"Thread: {Thread.CurrentThread.ManagedThreadId}|{fileName}|Écriture de dernier script");
 
                 fileLinesToWrite.Clear();
@@ -266,17 +266,24 @@ namespace SQLTranslator
                 // for the same field position
                 if (trimmedValue.Contains("to_date", StringComparison.InvariantCulture))
                 {
-                    var date = trimmedValue.Split('(')[1].Trim('\'');
+                    var stringDate = trimmedValue.Split('(')[1].Trim('\'');
                     var format = valuesArray[valueIndex + 1].Trim().Trim(new char[] { '\'', ')', ';' }).Replace('m', 'M').Split(' ')[0];
 
-                    if (date.Split(' ').Length == 2)
+                    if (stringDate.Split(' ').Length == 2)
                     {
                         format += " HH:mm:ss";
                     }
 
-                    date = DateTime.ParseExact(date, format, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+                    var date = DateTime.ParseExact(stringDate, format, CultureInfo.InvariantCulture);
+                    if (date.Year < 1000)
+                    {
+                        date = new DateTime(int.Parse($"{date.Year}0", CultureInfo.InvariantCulture),
+                            date.Month, date.Day, date.Hour, date.Minute, date.Second);
+                    }
 
-                    trimmedValue = $"CONVERT(DATETIME, '{date}')";
+                    stringDate = date.ToString(CultureInfo.InvariantCulture);
+
+                    trimmedValue = $"CONVERT(DATETIME, '{stringDate}')";
 
                     valueIndex++;
                 }
